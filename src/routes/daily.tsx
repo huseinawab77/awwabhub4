@@ -89,9 +89,23 @@ function ActivityRow({ a, date, entry }: { a: Activity; date: string; entry: Dai
       <div className="min-w-0">
         <p className="truncate font-semibold">{actName(a, t)}</p>
         <p className="text-xs text-muted-foreground">{targetText(a, t)}</p>
+        {a.inputType === "checklist" && a.frequency !== "day" && <PeriodCount a={a} date={date} />}
       </div>
       {a.inputType === "checklist" ? <CheckboxActivity a={a} date={date} entry={entry} /> : <QuantityActivity a={a} date={date} entry={entry} />}
     </li>
+  );
+}
+
+/** Weekly/monthly checklist habits: how many done days so far in this period vs. its target. */
+function PeriodCount({ a, date }: { a: Activity; date: string }) {
+  const t = useT();
+  const state = useAppState();
+  const p = periodFor(a.frequency as "week" | "month", date);
+  const done = Object.keys(state.entries).filter((d) => d >= p.start && d <= p.end && state.entries[d]?.[a.id]?.completed === true).length;
+  return (
+    <p className={`text-xs font-bold ${done >= a.target ? "text-sage" : "text-orange"}`}>
+      {done} / {a.target} · {t("qty.thisPeriod." + a.frequency)}{done >= a.target ? ` · ${t("qty.reached")}` : ""}
+    </p>
   );
 }
 
@@ -132,9 +146,12 @@ function QuantityActivity({ a, date, entry }: { a: Activity; date: string; entry
   const dayTotal = logsTotal(logs);
   // Weekly/monthly quantities progress against their own period target, not each day.
   const period = a.frequency === "day" ? null : periodFor(a.frequency, date);
-  const total = period
-    ? logsTotal(Object.entries(state.entries).filter(([d]) => d >= period.start && d <= period.end).map(([, m]) => ({ id: "", at: "", value: m[a.id]?.value ?? 0 })))
-    : dayTotal;
+  // Weekly/monthly: history covers every entry in the period (newest day first), each editable on its own date.
+  const periodLogs = period
+    ? Object.keys(state.entries).filter((d) => d >= period.start && d <= period.end).sort().reverse()
+        .flatMap((d) => entryLogs(state.entries[d]?.[a.id]).map((l) => ({ l, d })))
+    : logs.map((l) => ({ l, d: date }));
+  const total = period ? logsTotal(periodLogs.map((x) => x.l)) : dayTotal;
   const pct = a.target > 0 ? Math.round((total / a.target) * 100) : 0;
   const remaining = Math.max(0, a.target - total);
   const n = (x: number) => x.toLocaleString(locale());
@@ -168,24 +185,26 @@ function QuantityActivity({ a, date, entry }: { a: Activity; date: string; entry
         <span>{remaining > 0 ? t("qty.left", { n: n(remaining), unit }) : t("qty.reached")}</span>
       </div>
       {err && <p role="alert" className="text-xs font-bold text-rose">{err}</p>}
-      {logs.length > 0 && (
+      {periodLogs.length > 0 && (
         <button type="button" className="text-xs font-bold text-rose hover:underline" onClick={() => setOpen(!open)} aria-expanded={open}>
-          {t("qty.history", { n: logs.length })} {period ? `· ${t("qty.today")} ${n(dayTotal)}` : ""}
+          {t("qty.history", { n: periodLogs.length })} {period ? `· ${t("qty.today")} ${n(dayTotal)}` : ""}
         </button>
       )}
       {open && (
         <ul className="divide-y rounded-md border bg-background text-sm">
-          {logs.map((l) => <LogRow key={l.id} l={l} a={a} date={date} unit={unit} onError={setErr} />)}
+          {periodLogs.map(({ l, d }) => <LogRow key={d + l.id} l={l} a={a} date={d} unit={unit} onError={setErr} showDate={period !== null} />)}
         </ul>
       )}
     </div>
   );
 }
 
-function LogRow({ l, a, date, unit, onError }: { l: QuantityLog; a: Activity; date: string; unit: string; onError: (s: string | null) => void }) {
+function LogRow({ l, a, date, unit, onError, showDate }: { l: QuantityLog; a: Activity; date: string; unit: string; onError: (s: string | null) => void; showDate?: boolean }) {
   const t = useT();
   const [edit, setEdit] = useState<string | null>(null);
-  const time = l.at ? new Date(l.at).toLocaleTimeString(locale(), { hour: "2-digit", minute: "2-digit" }) : "";
+  const time = showDate
+    ? new Date(date + "T00:00:00").toLocaleDateString(locale(), { day: "numeric", month: "short" })
+    : l.at ? new Date(l.at).toLocaleTimeString(locale(), { hour: "2-digit", minute: "2-digit" }) : "";
   const save = () => {
     const v = Number((edit ?? "").trim().replace(",", "."));
     if (!Number.isFinite(v) || v <= 0) return onError(t("qty.invalid"));
