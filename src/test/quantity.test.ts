@@ -53,7 +53,7 @@ describe("store persistence", () => {
     expect(reloaded.entries[D].protein.value).toBe(30);
     expect(reloaded.entries[D].protein.logs).toHaveLength(1);
     expect(deleteQuantityLog(D, "protein", "id1")).toBe("saved");
-    expect(getState().entries[D]?["protein"]).toBeUndefined();
+    expect(getState().entries[D]?.["protein"]).toBeUndefined();
   });
 });
 
