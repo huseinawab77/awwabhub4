@@ -96,6 +96,19 @@ function ActivityRow({ a, date, entry }: { a: Activity; date: string; entry: Dai
   );
 }
 
+/** Weekly/monthly checklist habits: how many done days so far in this period vs. its target. */
+function PeriodCount({ a, date }: { a: Activity; date: string }) {
+  const t = useT();
+  const state = useAppState();
+  const p = periodFor(a.frequency as "week" | "month", date);
+  const done = Object.keys(state.entries).filter((d) => d >= p.start && d <= p.end && state.entries[d]?.[a.id]?.completed === true).length;
+  return (
+    <p className={`text-xs font-bold ${done >= a.target ? "text-sage" : "text-orange"}`}>
+      {done} / {a.target} · {t("qty.thisPeriod." + a.frequency)}{done >= a.target ? ` · ${t("qty.reached")}` : ""}
+    </p>
+  );
+}
+
 function CheckboxActivity({ a, date, entry }: { a: Activity; date: string; entry: DailyEntry | undefined }) {
   const t = useT();
   const v = entry?.completed ?? null;
